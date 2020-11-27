@@ -23,16 +23,7 @@ def geodistance(lon1, lat1, lon2, lat2):
     return dis
 
 
-def fang2npz(input_dir, output_dir):
-    """
-    Performs preprocessing and conversion the phase data from prof.fang into npz
-
-    :parameter
-    phase_file
-    output_dir
-
-    """
-    phase_file = os.path.join(input_dir, 'phase0.5.dat')
+def stadistsort(input_dir, outpu_dir):
     station_file = os.path.join(input_dir, 'station.dat')
     stf = np.loadtxt(station_file, dtype=str)
     stations = {}
@@ -51,22 +42,68 @@ def fang2npz(input_dir, output_dir):
         for code2 in stations:
             lon2 = stations[code2].longitude
             lat2 = stations[code2].latitude
-            dists.append((code2, geodistance(lon1, lat1, lon2, lat2)/1000))
+            dists.append((code2, geodistance(lon1, lat1, lon2, lat2) / 1000))
         dists = np.array(dists, dtype=dtype)
         dists = np.sort(dists, order='dist')
         stadist[dists[0][0]] = dists
-    breakpoint()
-    # phf = np.loadtxt(phase_file, dtype=str)
-    # for line in phf:
-    #     sta = line[0].split('/')[1]
-    #     phtype = line[1]
-    #     at = line[2] + ' ' + line[3]
-    #     lat = float(line[4])
-    #     lon = float(line[5])
-    #     depth = float(line[6])
-    #     prob = float(line[7])
-    #     breakpoint()
+    np.savez('../dataset/stadist.npz', stadist)
+
+
+def fang2npz(input_dir, output_dir):
+    """
+    Performs preprocessing and conversion the phase data from prof.fang into npz
+
+    :parameter:phase_file
+    :parameter:output_dir
+
+    """
+    stadist = np.load('../dataset/stadist.npz', allow_pickle=True)['arr_0'].item()
+    phase_file = os.path.join(input_dir, 'phase0.5.dat')
+    # phase_file = os.path.join(input_dir, 'miniph.dat')
+    phf = np.loadtxt(phase_file, dtype=str)
+    association_state = False
+    dtype = [('code', '<U10'), ('phasetype', '<U5'), ('arrival', UTCDateTime)]
+    minilog = []
+    eq = []
+    for ln in phf:
+        code = ln[0].split('/')[1]
+        ph = ln[1]
+        at = UTCDateTime(ln[2] + ' ' + ln[3])
+        # if code == 'XC04' and at == UTCDateTime('2018-05-16 16:44:04.620000'):
+        #     breakpoint()
+        # logic part
+        if not association_state:
+            center = (code, ph, at)
+            eq = [(code, ph, at)]
+            association_state = True
+        else:
+            ev = (code, ph, at)
+            # Determine if this is one of near stations
+            stnm = []
+            for i in range(len(stadist[center[0]])):
+                stnm.append(stadist[center[0]][i][0])
+            sortdiff = abs(stnm.index(eq[-1][0]) - stnm.index(ev[0]))
+            traveldiff = ev[2] - eq[-1][2]
+            if (sortdiff <= 5) and (traveldiff < 20) and \
+                    not ((ev[0] == eq[-1][0]) and (ev[1] == eq[-1][1])):
+                eq.append(ev)
+            else:
+                eq = np.array(eq, dtype=dtype)
+                minilog.append(eq)
+                eq = [(code, ph, at)]
+                center = (code, ph, at)
+    roughass = open('../dataset/rough_association.dat', 'w')
+    for eq in minilog:
+        roughass.write('# \n')
+        for ev in eq:
+            roughass.write(ev[0] + ' ' + ev[1] + ' ' + ev[2].strftime('%Y-%m-%d %H:%M:%S.%f') + '\n')
+    roughass.close()
+
+
+def hyposat():
+    print('hyposat')
 
 
 if __name__ == '__main__':
+    # stadistsort('../dataset', '../dataset')
     fang2npz('../dataset', '../dataset')
