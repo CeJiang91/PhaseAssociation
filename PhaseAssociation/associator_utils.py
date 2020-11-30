@@ -13,7 +13,7 @@ from obspy.core.inventory import Station
 from math import radians, cos, sin, asin, sqrt
 
 
-# 计算两点间距离-m
+# 计算两点间距离
 def geodistance(lon1, lat1, lon2, lat2):
     lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
     dlon = lon2 - lon1
@@ -49,7 +49,7 @@ def stadistsort(input_dir, outpu_dir):
     np.savez('../dataset/stadist.npz', stadist)
 
 
-def fang2npz(input_dir, output_dir):
+def fang2npz(input_dir, output_dir, save_mode=False):
     """
     Performs preprocessing and conversion the phase data from prof.fang into npz
 
@@ -63,14 +63,14 @@ def fang2npz(input_dir, output_dir):
     phf = np.loadtxt(phase_file, dtype=str)
     association_state = False
     dtype = [('code', '<U10'), ('phasetype', '<U5'), ('arrival', UTCDateTime)]
-    minilog = []
+    ailog = []
     eq = []
     for ln in phf:
         code = ln[0].split('/')[1]
         ph = ln[1]
         at = UTCDateTime(ln[2] + ' ' + ln[3])
-        # if code == 'XC04' and at == UTCDateTime('2018-05-16 16:44:04.620000'):
-        #     breakpoint()
+        if code == 'XC15' and at == UTCDateTime('2018-05-16 16:44:22.970000'):
+            breakpoint()
         # logic part
         if not association_state:
             center = (code, ph, at)
@@ -84,20 +84,36 @@ def fang2npz(input_dir, output_dir):
                 stnm.append(stadist[center[0]][i][0])
             sortdiff = abs(stnm.index(eq[-1][0]) - stnm.index(ev[0]))
             traveldiff = ev[2] - eq[-1][2]
-            if (sortdiff <= 5) and (traveldiff < 20) and \
-                    not ((ev[0] == eq[-1][0]) and (ev[1] == eq[-1][1])):
+            # The condition's parameters set manually
+            if (traveldiff < 3) and \
+                    (((sortdiff <= 3) and (not ((ev[0] == eq[-1][0]) and (ev[1] == eq[-1][1]))))
+                     or ((ev[0] in ev2[0] for ev2 in eq) and
+                         ((ev[0], ev[1]) not in [(ev2[0], ev2[1]) for ev2 in eq]))):
                 eq.append(ev)
             else:
                 eq = np.array(eq, dtype=dtype)
-                minilog.append(eq)
+                ailog.append(eq)
                 eq = [(code, ph, at)]
                 center = (code, ph, at)
-    roughass = open('../dataset/rough_association.dat', 'w')
-    for eq in minilog:
-        roughass.write('# \n')
-        for ev in eq:
-            roughass.write(ev[0] + ' ' + ev[1] + ' ' + ev[2].strftime('%Y-%m-%d %H:%M:%S.%f') + '\n')
-    roughass.close()
+    n = 0
+    for eq in ailog:
+        lenst = list(set([ev[0] for ev in eq]))
+        if len(lenst) >= 3:
+            n += 1
+    print(str(n)+'\n')
+    n = 0
+    for eq in ailog:
+        lenst = list(set([ev[0] for ev in eq]))
+        if len(lenst) >= 4:
+            n += 1
+    print(str(n)+'\n')
+    if save_mode:
+        roughass = open('../dataset/rough_association.dat', 'w')
+        for eq in ailog:
+            roughass.write('# \n')
+            for ev in eq:
+                roughass.write(ev[0] + ' ' + ev[1] + ' ' + ev[2].strftime('%Y-%m-%d %H:%M:%S.%f') + '\n')
+        roughass.close()
 
 
 def hyposat():
@@ -106,4 +122,4 @@ def hyposat():
 
 if __name__ == '__main__':
     # stadistsort('../dataset', '../dataset')
-    fang2npz('../dataset', '../dataset')
+    fang2npz('../dataset', '../dataset', save_mode=True)
